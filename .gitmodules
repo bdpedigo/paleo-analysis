@@ -1,0 +1,6 @@
+[submodule "deps/paleo"]
+	path = deps/paleo
+	url = https://github.com/bdpedigo/paleo.git
+[submodule "deps/morphsync"]
+	path = deps/morphsync
+	url = https://github.com/bdpedigo/morphsync.git
