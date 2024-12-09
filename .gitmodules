@@ -4,3 +4,9 @@
 [submodule "deps/morphsync"]
 	path = deps/morphsync
 	url = https://github.com/bdpedigo/morphsync.git
+[submodule "deps/CAVEclient"]
+	path = deps/CAVEclient
+	url = https://github.com/CAVEconnectome/CAVEclient.git
+[submodule "deps/paleo-cloud"]
+	path = deps/paleo-cloud
+	url = https://github.com/bdpedigo/paleo-cloud
