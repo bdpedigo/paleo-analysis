@@ -9,9 +9,6 @@ authors = [
 requires-python = ">=3.12"
 dependencies = []
 
-[project.scripts]
-paleo-analysis = "paleo_analysis:main"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
