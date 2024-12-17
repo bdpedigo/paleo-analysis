@@ -11,6 +11,9 @@ from caveclient import CAVEclient
 from cloudfiles import CloudFiles
 from paleo import (
     apply_edit_sequence,
+    check_graph_changes,
+    get_level2_data,
+    get_level2_spatial_graphs,
     get_metaedit_counts,
     get_metaedits,
     get_node_aliases,
@@ -121,30 +124,119 @@ graphs_by_state = apply_edit_sequence(
     remove_unchanged=True,
     include_initial=True,
 )
+level2_data = get_level2_data(graphs_by_state, client)
+spatial_graphs_by_state = get_level2_spatial_graphs(graphs_by_state, client)
+is_new_level2_state = check_graph_changes(spatial_graphs_by_state)
+
+skeletons_by_state, mappings_by_state = skeletonize_sequence(
+    graphs_by_state,
+    client=client,
+    root_id=root_id,
+    remove_unchanged=False,
+    level2_data=level2_data,
+)
+
+
+#  73: True,
+#  74: False,
+#  75: False,
 
 # %%
-print(len(graphs_by_state))
-skeletons_by_state, mappings_by_state = skeletonize_sequence(
-    graphs_by_state, root_id=root_id, client=client, remove_unchanged=True
-)
-print(len(skeletons_by_state))
-#%%
+from morphsync import MorphSync
 
-skeletons_by_sequence[sequence_name] = skeletons_by_state
+
+# %%
+def graph_to_arrays(graph):
+    graph = graph.copy()
+    nodes = np.array(list(graph.nodes()))
+    nodes = level2_data.loc[
+        nodes, ["rep_coord_nm_x", "rep_coord_nm_y", "rep_coord_nm_z"]
+    ]
+    edges = np.array(list(graph.edges()))
+    edges = pd.DataFrame(edges, columns=["source", "target"])
+    return nodes, edges
+
+
+graph_to_arrays(graphs_by_state[73])
+
+morphology1 = MorphSync()
+morphology1.add_graph(graph_to_arrays(graphs_by_state[73]), "level2")
+level2_poly1 = morphology1.level2.to_pyvista()
+
+morphology1.add_graph(skeletons_by_state[43], "skeleton")
+skeleton_poly1 = morphology1.skeleton.to_pyvista()
+
+morphology2 = MorphSync()
+morphology2.add_graph(graph_to_arrays(graphs_by_state[74]), "level2")
+level2_poly2 = morphology2.level2.to_pyvista()
+
+morphology2.add_graph(skeletons_by_state[44], "skeleton")
+skeleton_poly2 = morphology2.skeleton.to_pyvista()
+
+# %%
+metaedit_counts = pd.Series(edit_map).value_counts()
+
+# %%
+member_edits = edit_map_series[edit_map_series == 74].index
+
+# %%
+from paleo import get_detailed_change_log
+
+change_log = get_detailed_change_log(root_id, client, filtered=False)
+
+# %%
+coords = np.stack(change_log.loc[member_edits]["source_coords"].values).reshape(-1, 3)
+edit_centroid = coords.mean(axis=0)
+edit_centroid = edit_centroid * np.array([8, 8, 40])
+print(edit_centroid)
+
+# %%
+import pyvista as pv
+
+pv.set_jupyter_backend("client")
+
+plotter = pv.Plotter(shape=(1, 2))
+
+plotter.subplot(0, 0)
+plotter.add_mesh(level2_poly1, color="lightgrey")
+plotter.add_mesh(skeleton_poly1, color="red", line_width=5)
+
+plotter.subplot(0, 1)
+plotter.add_mesh(level2_poly2, color="lightgrey")
+plotter.add_mesh(skeleton_poly2, color="red", line_width=5)
+
+plotter.link_views()
+
+plotter.camera.focal_point = edit_centroid
+plotter.camera.position = edit_centroid + np.array([10000, 0, 0])
+plotter.camera.view_up = [0, -1, 0]
+
+plotter.show()
+# %%
+
+# skeletons_by_sequence[sequence_name] = skeletons_by_state
+
+relevant_states = [k for k, v in is_new_level2_state.items() if v]
+
+# %%
 
 synapses_by_state = map_synapses_to_sequence(pre_synapses, graphs_by_state)
 
-synapses_by_state = subset_dict(synapses_by_state, list(skeletons_by_state.keys()))
+synapses_by_state = subset_dict(synapses_by_state, relevant_states)
 
 synapse_ids_by_state = {k: list(v.keys()) for k, v in synapses_by_state.items()}
 
-#%%
-used_metaedit_ids = list(graphs_by_state.keys())
-metaedit_info = pd.DataFrame(index=used_metaedit_ids)
-metaedit_info["n_edits"] = (
-    metaedit_info.index.map(metaedit_counts).fillna(0).astype(int)
-)
-metaedit_info["cumulative_n_edits"] = metaedit_info["n_edits"].cumsum()
+# %%
+
+state_info = pd.DataFrame(index=relevant_states)
+if sequence_name == "idealized":
+    state_info["n_edits"] = state_info.index.map(metaedit_counts).fillna(0).astype(int)
+elif sequence_name == "historical":
+    state_info["n_edits"] = np.ones(len(state_info), dtype=int)
+state_info["cumulative_n_edits"] = state_info["n_edits"].cumsum()
+
+
+# %%
 
 
 cf.put_json(
