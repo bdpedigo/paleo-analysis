@@ -285,3 +285,77 @@ sns.scatterplot(data=synapse_changes, x="order", y="n_removed", ax=ax)
 cell_types.groupby("cell_type").size()
 
 # %%
+
+pre_synapse_sequence_files = list(cf.list("pre_synapse_sequences"))
+pre_synapse_sequence_files = [f for f in pre_synapse_sequence_files if "idealized" in f]
+pre_root_ids = [int(f.split("/")[1].split("_")[0]) for f in pre_synapse_sequence_files]
+
+post_synapse_sequence_files = list(cf.list("post_synapse_sequences"))
+post_synapse_sequence_files = [
+    f for f in post_synapse_sequence_files if "idealized" in f
+]
+post_root_ids = [
+    int(f.split("/")[1].split("_")[0]) for f in post_synapse_sequence_files
+]
+
+info_files = list(cf.list("state_info"))
+info_files = [f for f in info_files if "idealized" in f]
+info_root_ids = [int(f.split("/")[1].split("_")[0]) for f in info_files]
+
+root_ids = np.intersect1d(pre_root_ids, post_root_ids)
+root_ids = np.intersect1d(root_ids, info_root_ids)
+
+
+def key_by_int(dict_):
+    return {int(k): v for k, v in dict_.items()}
+
+
+rows = []
+for root_id in root_ids:
+    for side in ["pre", "post"]:
+        file = f"{side}_synapse_sequences/{root_id}_idealized_sequence.json"
+        synapse_ids_by_state = key_by_int(cf.get_json(file))
+        states = list(synapse_ids_by_state.keys())
+        for i in range(1, len(states)):
+            last_state = states[i - 1]
+            this_state = states[i]
+            last_synapse_ids = set(synapse_ids_by_state[last_state])
+            this_synapse_ids = set(synapse_ids_by_state[this_state])
+            intersection_ids = last_synapse_ids.intersection(this_synapse_ids)
+            added_ids = this_synapse_ids - last_synapse_ids
+            removed_ids = last_synapse_ids - this_synapse_ids
+            n_added = len(added_ids)
+            n_removed = len(removed_ids)
+            n_total = len(this_synapse_ids)
+
+            rows.append(
+                {
+                    "root_id": root_id,
+                    "state_id": this_state,
+                    "n_added": n_added,
+                    "n_removed": n_removed,
+                    "n_total": n_total,
+                    "side": side,
+                    "order": i,
+                }
+            )
+
+synapse_changes = pd.DataFrame(rows).set_index(["root_id", "state_id", "side"])
+
+# %%
+fig, ax = plt.subplots()
+
+sns.scatterplot(
+    data=synapse_changes.query("side=='post'"), x="order", y="n_added", ax=ax
+)
+sns.scatterplot(
+    data=synapse_changes.query("side=='post'"), x="order", y="n_removed", ax=ax
+)
+sns.scatterplot(
+    data=synapse_changes.query("side=='pre'"), x="order", y="n_added", ax=ax
+)
+sns.scatterplot(
+    data=synapse_changes.query("side=='pre'"), x="order", y="n_removed", ax=ax
+)
+
+# %%
